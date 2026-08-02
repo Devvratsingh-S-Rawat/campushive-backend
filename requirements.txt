@@ -1,0 +1,11 @@
+fastapi
+uvicorn[standard]
+sqlalchemy
+psycopg2-binary
+python-dotenv
+pydantic-settings
+python-jose[cryptography]
+bcrypt
+python-multipart
+email-validator
+httpx  # only needed to run smoke_test.py
