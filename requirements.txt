@@ -8,4 +8,5 @@ python-jose[cryptography]
 bcrypt
 python-multipart
 email-validator
+razorpay
 httpx  # only needed to run smoke_test.py

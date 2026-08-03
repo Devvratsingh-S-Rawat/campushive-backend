@@ -3,6 +3,9 @@ Quick end-to-end check — not the real test suite, just verifying the skeleton
 actually works before handing it off. Uses the default sqlite db.
 """
 import os
+from unittest.mock import patch
+
+import razorpay
 
 # make sure we're on a clean sqlite file for this run
 if os.path.exists("campushive.db"):
@@ -112,9 +115,53 @@ check("toggle interest on", r.status_code == 200 and r.json()["interested"] is T
 r = client.post(f"/fests/{fest_id}/interest", headers={"Authorization": f"Bearer {student_token}"})
 check("toggle interest off", r.status_code == 200 and r.json()["interested"] is False and r.json()["interested_count"] == 0)
 
-# student registers for event
+# --- paid registration flow (Razorpay mocked — no real keys in this sandbox) ---
+with patch("app.routers.events.razorpay_client.order.create") as mock_create:
+    mock_create.return_value = {"id": "order_test123", "amount": 50000, "currency": "INR"}
+    r = client.post(f"/events/{event_id}/register", headers={"Authorization": f"Bearer {student_token}"})
+    check(
+        "register creates razorpay order",
+        r.status_code == 200 and r.json()["razorpay_order_id"] == "order_test123" and r.json()["amount"] == 50000,
+    )
+    reg_id = r.json()["id"]
+
 r = client.post(f"/events/{event_id}/register", headers={"Authorization": f"Bearer {student_token}"})
-check("register for event", r.status_code == 200 and r.json()["status"] == "pending")
+check("duplicate registration blocked", r.status_code == 400)
+
+with patch("app.routers.events.razorpay_client.utility.verify_payment_signature") as mock_verify:
+    mock_verify.return_value = True
+    r = client.post(f"/events/{event_id}/verify-payment", json={
+        "registration_id": reg_id, "razorpay_order_id": "order_test123",
+        "razorpay_payment_id": "pay_test456", "razorpay_signature": "fake_sig_ok",
+    }, headers={"Authorization": f"Bearer {student_token}"})
+    check("verify payment success marks paid", r.status_code == 200 and r.json()["status"] == "paid")
+
+with patch("app.routers.events.razorpay_client.utility.verify_payment_signature") as mock_verify:
+    mock_verify.side_effect = razorpay.errors.SignatureVerificationError("bad signature")
+    r = client.post(f"/fests/{fest_id}/events", json={
+        "name": "Coding Sprint", "category": "Technical", "event_date": "2026-08-15T10:00:00",
+        "entry_fee": 200,
+    }, headers={"Authorization": f"Bearer {rep_token}"})
+    paid_event_2 = r.json()["id"]
+    with patch("app.routers.events.razorpay_client.order.create") as mock_create:
+        mock_create.return_value = {"id": "order_test999", "amount": 20000}
+        r = client.post(f"/events/{paid_event_2}/register", headers={"Authorization": f"Bearer {student_token}"})
+        reg_id_2 = r.json()["id"]
+    r = client.post(f"/events/{paid_event_2}/verify-payment", json={
+        "registration_id": reg_id_2, "razorpay_order_id": "order_test999",
+        "razorpay_payment_id": "pay_bad", "razorpay_signature": "fake_sig_bad",
+    }, headers={"Authorization": f"Bearer {student_token}"})
+    check("bad signature rejected and marked failed", r.status_code == 400)
+
+# --- free event: no payment needed at all ---
+r = client.post(f"/fests/{fest_id}/events", json={
+    "name": "Intro Workshop", "category": "Technical", "event_date": "2026-08-15T14:00:00",
+    "entry_fee": 0,
+}, headers={"Authorization": f"Bearer {rep_token}"})
+free_event_id = r.json()["id"]
+
+r = client.post(f"/events/{free_event_id}/register", headers={"Authorization": f"Bearer {student_token}"})
+check("free event registers with no payment step", r.status_code == 200 and r.json()["status"] == "paid" and r.json()["amount"] == 0)
 
 # no auth token at all
 r = client.post(f"/fests/{fest_id}/interest")

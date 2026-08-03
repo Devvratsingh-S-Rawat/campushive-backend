@@ -110,4 +110,19 @@ class RegistrationOut(BaseModel):
     id: int
     event_id: int
     status: RegistrationStatus
+    amount: int  # paise. 0 = free event, no payment needed
+    razorpay_order_id: Optional[str] = None
+    razorpay_key_id: Optional[str] = None  # public key — safe to send to frontend
+    message: str
+
+
+class VerifyPaymentRequest(BaseModel):
+    registration_id: int
+    razorpay_order_id: str
+    razorpay_payment_id: str
+    razorpay_signature: str
+
+
+class VerifyPaymentResponse(BaseModel):
+    status: RegistrationStatus
     message: str

@@ -17,6 +17,9 @@ Open `.env` and fill in:
 - `DATABASE_URL` — your Neon connection string (Neon dashboard → Connection Details).
   Leave it as the sqlite default if you just want to run locally without Neon yet.
 - `SECRET_KEY` — generate one with `python3 -c "import secrets; print(secrets.token_hex(32))"`
+- `RAZORPAY_KEY_ID` / `RAZORPAY_KEY_SECRET` — free test-mode keys from your Razorpay
+  dashboard (Settings → API Keys). No KYC needed for test mode. Endpoints that touch
+  Razorpay will fail without these set — everything else works fine without them.
 
 ## Run it
 
@@ -64,9 +67,18 @@ dashboard (don't commit `.env`), start command:
 uvicorn app.main:app --host 0.0.0.0 --port $PORT
 ```
 
-## What's next (week 2)
+## What's next
 
-- `POST /events/{id}/register` currently creates a `pending` registration with no real
-  payment. Jeet wires Razorpay checkout in here and flips status to `paid`.
-- `GET /fests/{id}/insights` — Devvrat adds this: aggregates interest/registration data
-  and calls Gemini to generate the AI insights card for the college-rep dashboard.
+- Razorpay is done on the backend (order creation + signature verification, see
+  `API_CONTRACT.md`). Jeet builds the frontend checkout flow that calls it — the secret
+  key stays server-side, only the public `razorpay_key_id` goes to the frontend.
+- `GET /fests/{id}/insights` — next up: aggregates interest/registration data and calls
+  Gemini to generate the AI insights card for the college-rep dashboard.
+
+## A note on testing
+
+`smoke_test.py` mocks the Razorpay API calls (no real test keys were available when this
+was built) — it verifies order creation, duplicate-registration blocking, signature
+verification, and free-event handling all work correctly, but hasn't hit Razorpay's
+actual servers. Once real test keys are in `.env`, do one real manual test through
+`/docs` or the frontend to confirm end-to-end before demo day.

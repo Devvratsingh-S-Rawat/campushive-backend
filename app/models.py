@@ -92,7 +92,8 @@ class Registration(Base):
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     event_id = Column(Integer, ForeignKey("events.id"), nullable=False)
     status = Column(Enum(RegistrationStatus), default=RegistrationStatus.pending)
-    payment_id = Column(String, nullable=True)  # Razorpay payment id, filled in week 2
+    razorpay_order_id = Column(String, nullable=True)
+    payment_id = Column(String, nullable=True)  # razorpay_payment_id once verified
     registered_at = Column(DateTime, default=datetime.utcnow)
 
     user = relationship("User", back_populates="registrations")

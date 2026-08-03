@@ -105,20 +105,54 @@ Toggles — call it again to un-interest. No request body.
 ```
 `entry_fee` is in plain rupees (500 = ₹500), not paise. `403` if you don't own the parent fest.
 
-### `POST /events/{id}/register` (auth required, student only)
-No request body yet.
+### `POST /events/{id}/register` (auth required, student only) — step 1
+No request body. Two possible outcomes:
+
+**Free event** (`entry_fee` was 0) — confirms immediately, no payment needed:
 ```json
-// response — week 1 (payment not wired yet)
-{ "id": 1, "event_id": 1, "status": "pending", "message": "Registered — payment integration lands week 2" }
+{ "id": 5, "event_id": 1, "status": "paid", "amount": 0, "message": "Registered — this event is free, no payment needed" }
 ```
-Week 2: this will return `status: "paid"` once Razorpay is wired in, and will need a
-payment token in the request. Contract update coming when that's ready — build your UI
-against `pending` for now, the button/flow won't need to change, just the response detail.
+
+**Paid event** — creates a Razorpay order, does NOT confirm registration yet:
+```json
+{
+  "id": 5, "event_id": 1, "status": "pending", "amount": 50000,
+  "razorpay_order_id": "order_GAWN9beXgaqRyO",
+  "razorpay_key_id": "rzp_test_xxxxxxxxxxxx",
+  "message": "Order created — complete payment to confirm registration"
+}
+```
+`amount` is in paise (50000 = ₹500). `razorpay_key_id` is the **public** key — safe to
+use in the frontend to open Checkout. `400` if already registered for this event.
+
+### `POST /events/{id}/verify-payment` (auth required, student only) — step 2
+Only needed for paid events. Call this with what Razorpay Checkout's success handler
+gives you:
+```json
+// request
+{
+  "registration_id": 5,
+  "razorpay_order_id": "order_GAWN9beXgaqRyO",
+  "razorpay_payment_id": "pay_xxxxxxxxxxxx",
+  "razorpay_signature": "generated_signature"
+}
+```
+```json
+// response 200
+{ "status": "paid", "message": "Payment verified, registration confirmed" }
+```
+`400` if the signature doesn't check out — registration gets marked `failed`, student
+can retry by calling `/register` again.
+
+**Frontend flow for Jeet:** call `/register` → if `amount > 0`, load Razorpay's
+`checkout.js`, open it with `{ key: razorpay_key_id, order_id: razorpay_order_id, amount }`
+→ on success callback you get `razorpay_payment_id` + `razorpay_signature` → POST those
+plus `registration_id` to `/verify-payment` → show confirmed/failed based on the response.
+The secret key never touches the frontend — only `razorpay_key_id` (public) does.
 
 ---
 
-## Coming in week 2 (don't build against these yet, just know they're coming)
+## Coming in week 2
 
 - `GET /fests/{id}/insights` (college_rep, owner only) — returns AI-generated insight
   bullets for the dashboard card.
-- Registration request body will need a Razorpay order/payment id once that's wired in.
