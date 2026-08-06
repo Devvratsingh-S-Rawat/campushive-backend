@@ -126,3 +126,9 @@ class VerifyPaymentRequest(BaseModel):
 class VerifyPaymentResponse(BaseModel):
     status: RegistrationStatus
     message: str
+
+
+# ---------- Insights ----------
+class InsightsOut(BaseModel):
+    insights: List[str]
+    stats: dict

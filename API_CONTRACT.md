@@ -152,7 +152,32 @@ The secret key never touches the frontend — only `razorpay_key_id` (public) do
 
 ---
 
-## Coming in week 2
+## Insights
 
-- `GET /fests/{id}/insights` (college_rep, owner only) — returns AI-generated insight
-  bullets for the dashboard card.
+### `GET /fests/{id}/insights` (auth required, college_rep who owns the fest)
+No request body.
+```json
+{
+  "insights": [
+    "Technical events drew far more interest than Cultural — lean into that next year.",
+    "Nearly half of interested students never registered — a reminder closer to the deadline could help."
+  ],
+  "stats": {
+    "fest_name": "Techfest 2026",
+    "total_interested": 42,
+    "total_events": 3,
+    "total_paid_registrations": 18,
+    "conversion_rate_pct": 42.9,
+    "events": [
+      {"name": "Robowar Championship", "paid_registrations": 12, "fill_rate_pct": 18.8}
+    ]
+  }
+}
+```
+`stats` is real numbers straight from the database — safe to render directly even if
+`insights` (the AI-generated part) is ever slow or unavailable. If the fest has zero
+interest and zero registrations, `insights` comes back with a single "not enough
+activity yet" message and Gemini never gets called — no cost, no wait.
+
+`403` if you're a student, or a college_rep who doesn't own this fest. `500` if
+`GEMINI_API_KEY` isn't set. `502` if Gemini itself fails to respond.

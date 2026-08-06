@@ -3,7 +3,7 @@ Quick end-to-end check — not the real test suite, just verifying the skeleton
 actually works before handing it off. Uses the default sqlite db.
 """
 import os
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 
 import razorpay
 
@@ -162,6 +162,67 @@ free_event_id = r.json()["id"]
 
 r = client.post(f"/events/{free_event_id}/register", headers={"Authorization": f"Bearer {student_token}"})
 check("free event registers with no payment step", r.status_code == 200 and r.json()["status"] == "paid" and r.json()["amount"] == 0)
+
+# --- AI insights (Gemini mocked — no real key in this sandbox) ---
+class FakeGeminiResponse:
+    def __init__(self, text):
+        self.text = text
+
+
+# fresh fest with zero activity — should short-circuit before ever calling Gemini
+r = client.post("/fests", json={
+    "name": "Empty Fest", "college_name": "IIT Bombay", "location": "Mumbai",
+    "category": [], "start_date": "2026-09-01T00:00:00", "end_date": "2026-09-02T00:00:00",
+}, headers={"Authorization": f"Bearer {rep_token}"})
+empty_fest_id = r.json()["id"]
+
+with patch("app.routers.fests._get_gemini_client") as mock_client:
+    r = client.get(f"/fests/{empty_fest_id}/insights", headers={"Authorization": f"Bearer {rep_token}"})
+    check(
+        "insights on empty fest skips Gemini entirely",
+        r.status_code == 200 and not mock_client.called and "Not enough activity" in r.json()["insights"][0],
+    )
+
+# real fest (has interest + a paid registration from earlier) — mocked clean JSON response
+import app.config as config_module
+config_module.settings.gemini_api_key = "dummy-key-for-mocked-tests"
+
+mock_gemini = MagicMock()
+mock_gemini.models.generate_content.return_value = FakeGeminiResponse(
+    '{"insights": ["Technical events drew far more interest than Cultural — lean into that next year.", '
+    '"Nearly half of interested students never registered — send a reminder closer to the deadline."]}'
+)
+with patch("app.routers.fests._get_gemini_client", return_value=mock_gemini):
+    r = client.get(f"/fests/{fest_id}/insights", headers={"Authorization": f"Bearer {rep_token}"})
+    check("insights with clean JSON response", r.status_code == 200 and len(r.json()["insights"]) == 2)
+    check("insights include real stats", r.json()["stats"]["fest_name"] == "Techfest 2026")
+
+# malformed / non-JSON response from the model — should still recover via line-split fallback
+mock_gemini_bad = MagicMock()
+mock_gemini_bad.models.generate_content.return_value = FakeGeminiResponse(
+    "- Technical events performed best this year\n- Consider more workshops next time\n"
+)
+with patch("app.routers.fests._get_gemini_client", return_value=mock_gemini_bad):
+    r = client.get(f"/fests/{fest_id}/insights", headers={"Authorization": f"Bearer {rep_token}"})
+    check("insights falls back to text parsing on bad JSON", r.status_code == 200 and len(r.json()["insights"]) == 2)
+
+# student can't access insights at all
+r = client.get(f"/fests/{fest_id}/insights", headers={"Authorization": f"Bearer {student_token}"})
+check("student blocked from insights", r.status_code == 403)
+
+# a different college_rep (not the owner) can't access this fest's insights
+r = client.post("/auth/signup", json={
+    "email": "otherrep@vit.ac.in", "password": "test1234", "name": "Other Rep",
+    "role": "college_rep", "college_name": "VIT Vellore",
+})
+other_rep_token = r.json()["access_token"]
+r = client.get(f"/fests/{fest_id}/insights", headers={"Authorization": f"Bearer {other_rep_token}"})
+check("non-owner college_rep blocked from insights", r.status_code == 403)
+
+# missing GEMINI_API_KEY should fail clearly, not crash unhandled
+config_module.settings.gemini_api_key = ""
+r = client.get(f"/fests/{fest_id}/insights", headers={"Authorization": f"Bearer {rep_token}"})
+check("missing gemini key gives clear 500, not a crash", r.status_code == 500 and "GEMINI_API_KEY" in r.json()["detail"])
 
 # no auth token at all
 r = client.post(f"/fests/{fest_id}/interest")

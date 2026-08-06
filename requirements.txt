@@ -9,4 +9,5 @@ bcrypt
 python-multipart
 email-validator
 razorpay
+google-genai
 httpx  # only needed to run smoke_test.py
