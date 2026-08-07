@@ -104,6 +104,18 @@ check("filter by category", r.status_code == 200 and any(f["id"] == fest_id for 
 r = client.get(f"/fests/{fest_id}")
 check("get fest detail", r.status_code == 200)
 
+# /fests/mine — the college-rep dashboard endpoint. Must return only this rep's own
+# fests, and critically must NOT get swallowed by the /{fest_id} route above it.
+r = client.get("/fests/mine", headers={"Authorization": f"Bearer {rep_token}"})
+check("mine returns 200, not swallowed by /{fest_id}", r.status_code == 200)
+check("mine includes this rep's fest", any(f["id"] == fest_id for f in r.json()))
+
+r = client.get("/fests/mine", headers={"Authorization": f"Bearer {student_token}"})
+check("student blocked from /fests/mine", r.status_code == 403)
+
+r = client.get("/fests/mine")
+check("unauthenticated blocked from /fests/mine", r.status_code == 401)
+
 # create event under fest
 r = client.post(f"/fests/{fest_id}/events", json={
     "name": "Robowar Championship", "category": "Technical",

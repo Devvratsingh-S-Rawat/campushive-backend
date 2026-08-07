@@ -51,6 +51,22 @@ def list_fests(category: Optional[str] = None, search: Optional[str] = None, db:
     return [_to_fest_out(f) for f in fests]
 
 
+@router.get("/mine", response_model=List[schemas.FestOut])
+def list_my_fests(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.require_role(models.UserRole.college_rep)),
+):
+    """For the college-rep dashboard — must be registered before /{fest_id} below,
+    otherwise FastAPI tries to parse 'mine' as a fest_id and 404s before this ever runs."""
+    fests = (
+        db.query(models.Fest)
+        .filter(models.Fest.created_by == current_user.id)
+        .order_by(models.Fest.start_date)
+        .all()
+    )
+    return [_to_fest_out(f) for f in fests]
+
+
 @router.get("/{fest_id}", response_model=schemas.FestOut)
 def get_fest(fest_id: int, db: Session = Depends(get_db)):
     fest = db.query(models.Fest).filter(models.Fest.id == fest_id).first()

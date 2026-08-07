@@ -60,6 +60,11 @@ Both query params optional. Returns a list:
 ### `GET /fests/{id}`
 Same shape as one item above. `404` if not found.
 
+### `GET /fests/mine` (auth required, college_rep only)
+Same shape as the list above, but filtered to only fests you created — this is what
+Atharva's dashboard should call to show "your fests." Empty list `[]` if you haven't
+created any yet, not an error.
+
 ### `POST /fests` (auth required, college_rep only)
 ```json
 // request
