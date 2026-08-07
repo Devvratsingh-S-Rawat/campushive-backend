@@ -1,10 +1,13 @@
 """
 Standalone live check — makes REAL calls using whatever is in your .env right now,
-including a real Razorpay order creation. No mocking, no second window, no server
-process to juggle. Run with: python test_live.py
+including a real Razorpay order and a real Gemini call. No mocking, no second window,
+no server process to juggle. Safe to re-run repeatedly against a persistent database
+(Neon) — uses a fresh unique email each run so it never collides with previous runs.
+Run with: python test_live.py
 """
 import os
 import traceback
+import uuid
 
 if os.path.exists("campushive.db"):
     os.remove("campushive.db")
@@ -13,6 +16,7 @@ from fastapi.testclient import TestClient
 from app.main import app
 
 client = TestClient(app)
+run_id = uuid.uuid4().hex[:6]
 
 
 def show(label, r):
@@ -26,7 +30,7 @@ def show(label, r):
 
 try:
     r = client.post("/auth/signup", json={
-        "email": "rep@test.com", "password": "test1234", "name": "Test Rep",
+        "email": f"rep_{run_id}@test.com", "password": "test1234", "name": "Test Rep",
         "role": "college_rep", "college_name": "Test College",
     })
     show("signup rep", r)
@@ -49,7 +53,7 @@ try:
     event_id = r.json()["id"]
 
     r = client.post("/auth/signup", json={
-        "email": "student@test.com", "password": "test1234", "name": "Test Student", "role": "student",
+        "email": f"student_{run_id}@test.com", "password": "test1234", "name": "Test Student", "role": "student",
     })
     show("signup student", r)
     r.raise_for_status()

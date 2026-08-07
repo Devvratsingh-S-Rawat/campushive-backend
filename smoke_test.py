@@ -1,13 +1,18 @@
 """
 Quick end-to-end check — not the real test suite, just verifying the skeleton
-actually works before handing it off. Uses the default sqlite db.
+actually works before handing it off. Safe to re-run repeatedly against either a
+throwaway local sqlite db OR a real persistent database (Neon) — every run uses
+fresh, unique emails so it never collides with data from a previous run.
 """
 import os
+import uuid
 from unittest.mock import patch, MagicMock
 
 import razorpay
 
-# make sure we're on a clean sqlite file for this run
+# clears a local sqlite file if that's what DATABASE_URL points to. Harmless no-op
+# if you're on Postgres/Neon — there's no local file to clear, which is fine, because
+# the run_id below is what actually keeps re-runs from colliding either way.
 if os.path.exists("campushive.db"):
     os.remove("campushive.db")
 
@@ -15,6 +20,11 @@ from fastapi.testclient import TestClient
 from app.main import app
 
 client = TestClient(app)
+
+run_id = uuid.uuid4().hex[:6]
+rep_email = f"rep_{run_id}@iitb.ac.in"
+student_email = f"student_{run_id}@atharva.ac.in"
+other_rep_email = f"otherrep_{run_id}@vit.ac.in"
 
 
 def check(label, condition):
@@ -30,7 +40,7 @@ check("root endpoint", r.status_code == 200)
 
 # signup college rep
 r = client.post("/auth/signup", json={
-    "email": "rep@iitb.ac.in", "password": "pass1234", "name": "Fest Rep",
+    "email": rep_email, "password": "pass1234", "name": "Fest Rep",
     "role": "college_rep", "college_name": "IIT Bombay",
 })
 check("signup college_rep", r.status_code == 200)
@@ -38,7 +48,7 @@ rep_token = r.json()["access_token"]
 
 # signup student
 r = client.post("/auth/signup", json={
-    "email": "student@atharva.ac.in", "password": "pass1234", "name": "Devvrat",
+    "email": student_email, "password": "pass1234", "name": "Devvrat",
     "role": "student",
 })
 check("signup student", r.status_code == 200)
@@ -46,22 +56,22 @@ student_token = r.json()["access_token"]
 
 # duplicate signup should fail
 r = client.post("/auth/signup", json={
-    "email": "rep@iitb.ac.in", "password": "pass1234", "name": "Dup",
+    "email": rep_email, "password": "pass1234", "name": "Dup",
     "role": "college_rep",
 })
 check("duplicate signup rejected", r.status_code == 400)
 
 # login
-r = client.post("/auth/login", json={"email": "rep@iitb.ac.in", "password": "pass1234"})
+r = client.post("/auth/login", json={"email": rep_email, "password": "pass1234"})
 check("login works", r.status_code == 200)
 
 # wrong password
-r = client.post("/auth/login", json={"email": "rep@iitb.ac.in", "password": "wrong"})
+r = client.post("/auth/login", json={"email": rep_email, "password": "wrong"})
 check("wrong password rejected", r.status_code == 401)
 
 # /me
 r = client.get("/auth/me", headers={"Authorization": f"Bearer {rep_token}"})
-check("get me", r.status_code == 200 and r.json()["email"] == "rep@iitb.ac.in")
+check("get me", r.status_code == 200 and r.json()["email"] == rep_email)
 
 # create fest as college rep
 r = client.post("/fests", json={
@@ -84,11 +94,11 @@ check("student blocked from creating fest", r.status_code == 403)
 
 # list fests
 r = client.get("/fests")
-check("list fests", r.status_code == 200 and len(r.json()) == 1)
+check("list fests", r.status_code == 200 and any(f["id"] == fest_id for f in r.json()))
 
 # filter by category
 r = client.get("/fests?category=Technical")
-check("filter by category", r.status_code == 200 and len(r.json()) == 1)
+check("filter by category", r.status_code == 200 and any(f["id"] == fest_id for f in r.json()))
 
 # get fest detail
 r = client.get(f"/fests/{fest_id}")
@@ -212,7 +222,7 @@ check("student blocked from insights", r.status_code == 403)
 
 # a different college_rep (not the owner) can't access this fest's insights
 r = client.post("/auth/signup", json={
-    "email": "otherrep@vit.ac.in", "password": "test1234", "name": "Other Rep",
+    "email": other_rep_email, "password": "test1234", "name": "Other Rep",
     "role": "college_rep", "college_name": "VIT Vellore",
 })
 other_rep_token = r.json()["access_token"]
