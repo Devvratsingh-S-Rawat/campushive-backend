@@ -96,11 +96,14 @@ def register_for_event(
             amount=0, message="Registered — this event is free, no payment needed",
         )
 
-    order = razorpay_client.order.create({
-        "amount": amount_paise,
-        "currency": "INR",
-        "receipt": f"event{event_id}_user{current_user.id}",
-    })
+    try:
+        order = razorpay_client.order.create({
+            "amount": amount_paise,
+            "currency": "INR",
+            "receipt": f"event{event_id}_user{current_user.id}",
+        })
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Could not create Razorpay order: {e}")
 
     registration.razorpay_order_id = order["id"]
     db.add(registration)
