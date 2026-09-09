@@ -14,6 +14,7 @@ razorpay_client = razorpay.Client(auth=(settings.razorpay_key_id, settings.razor
 
 
 def _to_event_out(event: models.Event) -> schemas.EventOut:
+    paid_count = sum(1 for r in event.registrations if r.status == models.RegistrationStatus.paid)
     return schemas.EventOut(
         id=event.id,
         fest_id=event.fest_id,
@@ -24,7 +25,7 @@ def _to_event_out(event: models.Event) -> schemas.EventOut:
         location=event.location,
         max_participants=event.max_participants,
         entry_fee=event.entry_fee,
-        registered_count=len(event.registrations),
+        registered_count=paid_count,
     )
 
 
@@ -76,15 +77,16 @@ def register_for_event(
         .filter(
             models.Registration.event_id == event_id,
             models.Registration.user_id == current_user.id,
-            models.Registration.status != models.RegistrationStatus.failed,
         )
         .first()
     )
-    if existing:
+    if existing and existing.status == models.RegistrationStatus.paid:
         raise HTTPException(status_code=400, detail="Already registered for this event")
 
     amount_paise = event.entry_fee * 100
-    registration = models.Registration(user_id=current_user.id, event_id=event_id)
+    # reuse the same row on a retry (pending or failed) instead of piling up
+    # duplicate attempts — this is what makes "try again" actually work
+    registration = existing or models.Registration(user_id=current_user.id, event_id=event_id)
 
     if amount_paise == 0:
         registration.status = models.RegistrationStatus.paid
@@ -106,6 +108,7 @@ def register_for_event(
         raise HTTPException(status_code=502, detail=f"Could not create Razorpay order: {e}")
 
     registration.razorpay_order_id = order["id"]
+    registration.status = models.RegistrationStatus.pending
     db.add(registration)
     db.commit()
     db.refresh(registration)

@@ -59,6 +59,7 @@ class FestOut(BaseModel):
     end_date: datetime
     interested_count: int = 0
     event_count: int = 0
+    user_interested: Optional[bool] = None  # null when nobody's logged in
 
     class Config:
         from_attributes = True

@@ -134,8 +134,19 @@ check("list events", r.status_code == 200 and len(r.json()) == 1)
 r = client.post(f"/fests/{fest_id}/interest", headers={"Authorization": f"Bearer {student_token}"})
 check("toggle interest on", r.status_code == 200 and r.json()["interested"] is True and r.json()["interested_count"] == 1)
 
+# GET /fests/{id} should now reflect this student's interest state — this is
+# what fixes the bug where the page always showed "not interested" on reload
+r = client.get(f"/fests/{fest_id}", headers={"Authorization": f"Bearer {student_token}"})
+check("fest detail reflects logged-in user's interest as true", r.json()["user_interested"] is True)
+
+r = client.get(f"/fests/{fest_id}")
+check("fest detail shows null interest for anonymous visitor", r.json()["user_interested"] is None)
+
 r = client.post(f"/fests/{fest_id}/interest", headers={"Authorization": f"Bearer {student_token}"})
 check("toggle interest off", r.status_code == 200 and r.json()["interested"] is False and r.json()["interested_count"] == 0)
+
+r = client.get(f"/fests/{fest_id}", headers={"Authorization": f"Bearer {student_token}"})
+check("fest detail reflects interest as false after untoggling", r.json()["user_interested"] is False)
 
 # --- paid registration flow (Razorpay mocked — no real keys in this sandbox) ---
 with patch("app.routers.events.razorpay_client.order.create") as mock_create:
@@ -147,16 +158,43 @@ with patch("app.routers.events.razorpay_client.order.create") as mock_create:
     )
     reg_id = r.json()["id"]
 
-r = client.post(f"/events/{event_id}/register", headers={"Authorization": f"Bearer {student_token}"})
-check("duplicate registration blocked", r.status_code == 400)
+# retrying while still pending should REUSE the same registration row,
+# not create a new one and not block — this is what makes "try again" work
+# after a dismissed/failed payment popup
+with patch("app.routers.events.razorpay_client.order.create") as mock_create:
+    mock_create.return_value = {"id": "order_retry456", "amount": 50000}
+    r = client.post(f"/events/{event_id}/register", headers={"Authorization": f"Bearer {student_token}"})
+    check(
+        "retry while pending reuses the same registration, doesn't block",
+        r.status_code == 200 and r.json()["id"] == reg_id and r.json()["razorpay_order_id"] == "order_retry456",
+    )
+
+# still just pending at this point — should NOT count toward registered_count yet
+r = client.get(f"/fests/{fest_id}/events")
+check(
+    "pending registration doesn't count toward registered_count",
+    next(e for e in r.json() if e["id"] == event_id)["registered_count"] == 0,
+)
 
 with patch("app.routers.events.razorpay_client.utility.verify_payment_signature") as mock_verify:
     mock_verify.return_value = True
     r = client.post(f"/events/{event_id}/verify-payment", json={
-        "registration_id": reg_id, "razorpay_order_id": "order_test123",
+        "registration_id": reg_id, "razorpay_order_id": "order_retry456",
         "razorpay_payment_id": "pay_test456", "razorpay_signature": "fake_sig_ok",
     }, headers={"Authorization": f"Bearer {student_token}"})
     check("verify payment success marks paid", r.status_code == 200 and r.json()["status"] == "paid")
+
+# NOW it should count — this is the specific fix for the misleading "1
+# registered" shown after a failed payment attempt
+r = client.get(f"/fests/{fest_id}/events")
+check(
+    "registered_count updates to 1 only once actually paid",
+    next(e for e in r.json() if e["id"] == event_id)["registered_count"] == 1,
+)
+
+# NOW that it's genuinely paid, a further attempt should actually be blocked
+r = client.post(f"/events/{event_id}/register", headers={"Authorization": f"Bearer {student_token}"})
+check("registering again after paid is blocked", r.status_code == 400)
 
 with patch("app.routers.events.razorpay_client.utility.verify_payment_signature") as mock_verify:
     mock_verify.side_effect = razorpay.errors.SignatureVerificationError("bad signature")

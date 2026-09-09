@@ -49,6 +49,26 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
     return user
 
 
+# For endpoints that work for anyone but personalize when logged in —
+# never raises, just returns None if there's no valid token.
+oauth2_scheme_optional = OAuth2PasswordBearer(tokenUrl="auth/login", auto_error=False)
+
+
+def get_current_user_optional(
+    token: str = Depends(oauth2_scheme_optional), db: Session = Depends(get_db)
+) -> models.User | None:
+    if not token:
+        return None
+    try:
+        payload = jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm])
+        user_id = payload.get("sub")
+        if user_id is None:
+            return None
+    except JWTError:
+        return None
+    return db.query(models.User).filter(models.User.id == int(user_id)).first()
+
+
 def require_role(role: models.UserRole):
     """Dependency factory — e.g. Depends(require_role(UserRole.college_rep))"""
 
