@@ -13,6 +13,8 @@ class Settings(BaseSettings):
     gemini_api_key: str = ""
     gemini_model: str = "gemini-flash-lite-latest"
 
+    google_client_id: str = ""
+
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
 

@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Literal, Optional
 
 from pydantic import BaseModel, EmailStr, field_validator
 
@@ -18,6 +18,11 @@ class UserCreate(BaseModel):
 class UserLogin(BaseModel):
     email: EmailStr
     password: str
+
+
+class GoogleAuthRequest(BaseModel):
+    credential: str                # the ID token from Google Identity Services on the frontend
+    role: Optional[str] = "student"  # only used the first time this Google account signs in
 
 
 class UserOut(BaseModel):
@@ -73,6 +78,18 @@ class FestOut(BaseModel):
 
 
 # ---------- Event ----------
+class MediaItem(BaseModel):
+    url: str
+    type: Literal["image", "video"]
+
+    @field_validator("url")
+    @classmethod
+    def https_only(cls, v):
+        if not v.startswith("https://"):
+            raise ValueError("media url must start with https://")
+        return v
+
+
 class EventCreate(BaseModel):
     name: str
     category: Optional[str] = None
@@ -81,6 +98,7 @@ class EventCreate(BaseModel):
     location: Optional[str] = None
     max_participants: Optional[int] = None
     entry_fee: int = 0
+    media: List[MediaItem] = []
 
 
 class EventOut(BaseModel):
@@ -93,6 +111,7 @@ class EventOut(BaseModel):
     location: Optional[str] = None
     max_participants: Optional[int] = None
     entry_fee: int
+    media: List[MediaItem] = []
     registered_count: int = 0
 
     class Config:

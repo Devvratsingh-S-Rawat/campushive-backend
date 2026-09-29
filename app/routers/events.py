@@ -25,6 +25,7 @@ def _to_event_out(event: models.Event) -> schemas.EventOut:
         location=event.location,
         max_participants=event.max_participants,
         entry_fee=event.entry_fee,
+        media=event.media or [],
         registered_count=paid_count,
     )
 

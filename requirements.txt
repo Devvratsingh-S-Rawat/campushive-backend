@@ -10,4 +10,5 @@ python-multipart
 email-validator
 razorpay
 google-genai
+google-auth[requests]
 httpx  # only needed to run smoke_test.py

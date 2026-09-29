@@ -1,7 +1,7 @@
 import enum
 from datetime import datetime
 
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Enum, Text
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Enum, Text, JSON
 from sqlalchemy.orm import relationship
 
 from app.database import Base
@@ -23,7 +23,8 @@ class User(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     email = Column(String, unique=True, index=True, nullable=False)
-    password_hash = Column(String, nullable=False)
+    password_hash = Column(String, nullable=True)  # nullable: Google-only accounts have no password
+    google_id = Column(String, unique=True, nullable=True, index=True)
     name = Column(String, nullable=False)
     role = Column(Enum(UserRole), nullable=False)
     college_name = Column(String, nullable=True)  # only meaningful for college_rep
@@ -64,7 +65,8 @@ class Event(Base):
     event_date = Column(DateTime, nullable=False)
     location = Column(String, nullable=True)
     max_participants = Column(Integer, nullable=True)
-    entry_fee = Column(Integer, default=0)  # in rupees. Jeet: x100 for paise when calling Razorpay
+    entry_fee = Column(Integer, default=0)  # in rupees — x100 for paise when calling Razorpay
+    media = Column(JSON, nullable=True, default=list)  # [{"url": ..., "type": "image"|"video"}, ...]
     created_at = Column(DateTime, default=datetime.utcnow)
 
     fest = relationship("Fest", back_populates="events")
